@@ -27,6 +27,7 @@ import com.jirapat.personalfinance.api.dto.response.TransactionResponse;
 import com.jirapat.personalfinance.api.entity.TransactionType;
 import com.jirapat.personalfinance.api.service.TransactionService;
 
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -34,26 +35,29 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/transactions")
-@Tag(name = "Transactions", description = "")
+@Tag(name = "Transactions", description = "Transaction management endpoints")
 public class TransactionController {
 
     private final TransactionService transactionService;
 
     @GetMapping
+    @Operation(summary = "Get all transactions for current user with filtering")
     public ResponseEntity<ApiResponse<Page<TransactionResponse>>> getAllTransactions(
             @RequestParam(required = false) Long accountId,
             @RequestParam(required = false) Long categoryId,
             @RequestParam(required = false) TransactionType type,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)LocalDate dateFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)LocalDate dateTo,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) BigDecimal min,
             @RequestParam(required = false) BigDecimal max,
-            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
-        Page<TransactionResponse> response = transactionService.getAllTransactions(accountId, categoryId, type, dateFrom, dateTo, min, max, pageable);
+            @PageableDefault(size = 20, sort = "transactionDate", direction = Sort.Direction.DESC) Pageable pageable) {
+        Page<TransactionResponse> response = transactionService.getAllTransactions(
+                accountId, categoryId, type, dateFrom, dateTo, min, max, pageable);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
     @GetMapping("/{id}")
+    @Operation(summary = "Get transaction by ID")
     public ResponseEntity<ApiResponse<TransactionResponse>> getTransactionById(
             @PathVariable Long id
     ) {
@@ -62,6 +66,7 @@ public class TransactionController {
     }
 
     @PostMapping
+    @Operation(summary = "Create a new transaction with automatic balance update")
     public ResponseEntity<ApiResponse<TransactionResponse>> createTransaction(
             @Valid @RequestBody CreateTransactionRequest request
     ) {
@@ -71,16 +76,17 @@ public class TransactionController {
     }
 
     @PutMapping("/{id}")
+    @Operation(summary = "Update transaction with balance reversal and reapplication")
     public ResponseEntity<ApiResponse<TransactionResponse>> updateTransaction(
             @PathVariable Long id,
             @Valid @RequestBody UpdateTransactionRequest request
-            )
-    {
+    ) {
         TransactionResponse response = transactionService.updateTransaction(id, request);
-        return ResponseEntity.ok(ApiResponse.success(response));
+        return ResponseEntity.ok(ApiResponse.success(response, "Transaction updated successfully"));
     }
 
     @DeleteMapping("/{id}")
+    @Operation(summary = "Delete transaction with balance reversal (soft delete)")
     public ResponseEntity<ApiResponse<Void>> deleteTransaction(@PathVariable Long id) {
         transactionService.deleteTransaction(id);
         return ResponseEntity.ok(ApiResponse.success("Transaction deleted successfully"));

@@ -21,46 +21,41 @@ import lombok.Setter;
 import lombok.experimental.SuperBuilder;
 
 @Entity
-@Table(name = "transactions")
-@SQLDelete(sql = "UPDATE transactions SET deleted_at = NOW() WHERE id = ?")
+@Table(name = "budgets")
+@SQLDelete(sql = "UPDATE budgets SET deleted_at = NOW() WHERE id = ?")
 @SQLRestriction("deleted_at IS NULL")
 @Getter
 @Setter
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-public class Transaction extends BaseEntity {
+public class Budget extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
+    @JoinColumn(name = "user_id")
     private User user;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "account_id", nullable = false)
-    private Account account;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id")
     private Category category;
 
-    @Column(name = "transfer_to_account_id")
-    private Long transferToAccountId;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 10)
-    private TransactionType type;
+    @Column(nullable = false, length = 100)
+    private String name;
 
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal amount;
 
-    @Column(length = 255)
-    private String description;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private BudgetPeriod period;
 
-    private String note;
+    @Column(nullable = false, name = "start_date")
+    private LocalDate startDate;
 
-    @Column(nullable = false, name = "transaction_date")
-    private LocalDate transactionDate;
+    @Column(name = "end_date")
+    private LocalDate endDate;
 
-    @Column(name = "attachment_url", length = 500)
-    private String attachmentUrl;
+    @Builder.Default
+    @Column(name = "is_active", nullable = false)
+    private Boolean isActive = true;
 }

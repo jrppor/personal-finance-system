@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.jirapat.personalfinance.api.dto.request.CreateTransactionRequest;
 import com.jirapat.personalfinance.api.dto.request.UpdateTransactionRequest;
+import com.jirapat.personalfinance.api.dto.response.AccountResponse;
 import com.jirapat.personalfinance.api.dto.response.TransactionResponse;
 import com.jirapat.personalfinance.api.entity.Account;
 import com.jirapat.personalfinance.api.entity.AccountType;
@@ -20,7 +21,7 @@ import com.jirapat.personalfinance.api.entity.TransactionType;
 import com.jirapat.personalfinance.api.entity.User;
 import com.jirapat.personalfinance.api.exception.BadRequestException;
 import com.jirapat.personalfinance.api.exception.ResourceNotFoundException;
-import com.jirapat.personalfinance.api.mapper.AccountMapper;
+import com.jirapat.personalfinance.api.exception.UnauthorizedException;
 import com.jirapat.personalfinance.api.mapper.TransactionMapper;
 import com.jirapat.personalfinance.api.repository.AccountRepository;
 import com.jirapat.personalfinance.api.repository.CategoryRepository;
@@ -41,34 +42,41 @@ public class TransactionService {
     private final CategoryRepository categoryRepository;
     private final AccountRepository accountRepository;
     private final TransactionMapper transactionMapper;
-    private final AccountMapper accountMapper;
 
     @Transactional(readOnly = true)
-    public Page<TransactionResponse> getAllTransactions(Long accountId, Long categoryId, TransactionType type, LocalDate dateFrom, LocalDate dateTo, BigDecimal min, BigDecimal max, Pageable pageable) {
+    public Page<TransactionResponse> getAllTransactions(Long accountId,
+            Long categoryId,
+            TransactionType type,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            BigDecimal min,
+            BigDecimal max,
+            Pageable pageable) {
         Long currentUserId = securityService.getCurrentUserId();
         Specification<Transaction> spec = TransactionSpecification.hasUserId(currentUserId)
-                .and(TransactionSpecification.createdAfter(dateFrom))
-                .and(TransactionSpecification.createdBefore(dateTo))
+                .and(TransactionSpecification.transactionDateFrom(dateFrom))
+                .and(TransactionSpecification.transactionDateTo(dateTo))
                 .and(TransactionSpecification.hasAccountId(accountId))
                 .and(TransactionSpecification.hasCategoryId(categoryId))
                 .and(TransactionSpecification.hasType(type))
-                .and(TransactionSpecification.amountBetween(min, max));
+                .and(TransactionSpecification.amountMin(min))
+                .and(TransactionSpecification.amountMax(max));
 
         return transactionRepository.findAll(spec, pageable)
-                .map(transactionMapper::toTransactionResponse);
+                .map(this::toResponseWithTransferAccount);
     }
 
     @Transactional(readOnly = true)
     public TransactionResponse getTransactionById(Long id) {
-        log.info("Fetching Transaction by id: {}", id);
+        Long currentUserId = securityService.getCurrentUserId();
         Transaction transaction = findTransactionById(id);
-        verifyTransactionOwnership(transaction);
-        return transactionMapper.toTransactionResponse(transaction);
+        validateOwnership(transaction, currentUserId);
+        return toResponseWithTransferAccount(transaction);
     }
 
     public TransactionResponse createTransaction(CreateTransactionRequest request) {
         User currentUser = securityService.getCurrentUser();
-        log.info("Creating transaction by user: {}", currentUser);
+        log.info("Creating {} transaction for user id: {}", request.getType(), currentUser.getId());
 
         Transaction transaction = transactionMapper.toEntity(request);
         transaction.setUser(currentUser);
@@ -79,6 +87,7 @@ public class TransactionService {
         }
 
         Account account = findAccountById(request.getAccountId());
+        validateAccountOwnership(account, currentUser.getId());
         transaction.setAccount(account);
 
         switch (transaction.getType()) {
@@ -97,6 +106,7 @@ public class TransactionService {
                     throw new BadRequestException("Source and destination accounts must be different");
                 }
                 Account transferToAccount = findAccountById(request.getTransferToAccountId());
+                validateAccountOwnership(transferToAccount, currentUser.getId());
                 validateSufficientBalance(account, transaction.getAmount());
                 account.setBalance(account.getBalance().subtract(transaction.getAmount()));
                 transferToAccount.setBalance(transferToAccount.getBalance().add(transaction.getAmount()));
@@ -106,39 +116,43 @@ public class TransactionService {
         accountRepository.save(account);
 
         Transaction saved = transactionRepository.save(transaction);
-        return transactionMapper.toTransactionResponse(saved);
+        log.info("Transaction created with id: {}", saved.getId());
+        return toResponseWithTransferAccount(saved);
     }
 
     public TransactionResponse updateTransaction(Long id, UpdateTransactionRequest request) {
-        User currentUser = securityService.getCurrentUser();
-        log.info("Updating transaction {} by user: {}", id, currentUser.getEmail());
+        Long currentUserId = securityService.getCurrentUserId();
+        log.info("Updating transaction id: {}", id);
 
         Transaction transaction = findTransactionById(id);
-        verifyTransactionOwnership(transaction);
+        validateOwnership(transaction, currentUserId);
 
         // 1. Reverse old transaction effect
         reverseTransaction(transaction);
 
-        // 2. Update transaction fields
+        // 2. Update transaction fields (type is now mapped by MapStruct)
         transactionMapper.updateEntity(request, transaction);
-        transaction.setType(TransactionType.valueOf(request.getType()));
 
         if (request.getCategoryId() != null) {
             Category category = findCategoryById(request.getCategoryId());
             transaction.setCategory(category);
+        } else {
+            transaction.setCategory(null);
         }
 
         // 3. Apply new transaction effect
-        applyTransaction(transaction);
+        applyTransaction(transaction, currentUserId);
 
         Transaction saved = transactionRepository.save(transaction);
-        return transactionMapper.toTransactionResponse(saved);
+        return toResponseWithTransferAccount(saved);
     }
 
     public void deleteTransaction(Long id) {
-        log.info("Deleting transaction: {}", id);
+        Long currentUserId = securityService.getCurrentUserId();
+        log.info("Deleting transaction id: {}", id);
+
         Transaction transaction = findTransactionById(id);
-        verifyTransactionOwnership(transaction);
+        validateOwnership(transaction, currentUserId);
 
         reverseTransaction(transaction);
 
@@ -146,15 +160,30 @@ public class TransactionService {
         log.info("Transaction deleted successfully: {}", id);
     }
 
+    // -- helpers --
+    private TransactionResponse toResponseWithTransferAccount(Transaction transaction) {
+        TransactionResponse response = transactionMapper.toTransactionResponse(transaction);
+        if (transaction.getTransferToAccountId() != null) {
+            accountRepository.findById(transaction.getTransferToAccountId())
+                    .ifPresent(account -> response.setTransferToAccount(
+                            AccountResponse.builder()
+                                    .id(account.getId())
+                                    .name(account.getName())
+                                    .type(account.getType())
+                                    .balance(account.getBalance())
+                                    .isActive(account.getIsActive())
+                                    .createdAt(account.getCreatedAt())
+                                    .updatedAt(account.getUpdatedAt())
+                                    .build()));
+        }
+        return response;
+    }
+
     private void reverseTransaction(Transaction transaction) {
         Account account = transaction.getAccount();
         switch (transaction.getType()) {
-            case INCOME -> {
-                account.setBalance(account.getBalance().subtract(transaction.getAmount()));
-            }
-            case EXPENSE -> {
-                account.setBalance(account.getBalance().add(transaction.getAmount()));
-            }
+            case INCOME -> account.setBalance(account.getBalance().subtract(transaction.getAmount()));
+            case EXPENSE -> account.setBalance(account.getBalance().add(transaction.getAmount()));
             case TRANSFER -> {
                 account.setBalance(account.getBalance().add(transaction.getAmount()));
                 if (transaction.getTransferToAccountId() != null) {
@@ -167,12 +196,10 @@ public class TransactionService {
         accountRepository.save(account);
     }
 
-    private void applyTransaction(Transaction transaction) {
+    private void applyTransaction(Transaction transaction, Long userId) {
         Account account = transaction.getAccount();
         switch (transaction.getType()) {
-            case INCOME -> {
-                account.setBalance(account.getBalance().add(transaction.getAmount()));
-            }
+            case INCOME -> account.setBalance(account.getBalance().add(transaction.getAmount()));
             case EXPENSE -> {
                 validateSufficientBalance(account, transaction.getAmount());
                 account.setBalance(account.getBalance().subtract(transaction.getAmount()));
@@ -185,6 +212,7 @@ public class TransactionService {
                     throw new BadRequestException("Source and destination accounts must be different");
                 }
                 Account transferToAccount = findAccountById(transaction.getTransferToAccountId());
+                validateAccountOwnership(transferToAccount, userId);
                 validateSufficientBalance(account, transaction.getAmount());
                 account.setBalance(account.getBalance().subtract(transaction.getAmount()));
                 transferToAccount.setBalance(transferToAccount.getBalance().add(transaction.getAmount()));
@@ -201,24 +229,29 @@ public class TransactionService {
         }
     }
 
-    private void verifyTransactionOwnership(Transaction transaction) {
-        Long currentUserId = securityService.getCurrentUserId();
-        if (!transaction.getUser().getId().equals(currentUserId)) {
-            throw new ResourceNotFoundException("Transaction", "id", transaction.getId().toString());
+    private void validateOwnership(Transaction transaction, Long userId) {
+        if (!transaction.getUser().getId().equals(userId)) {
+            throw new UnauthorizedException("You don't have permission to access this transaction");
         }
     }
 
-    public Transaction findTransactionById(Long id) {
+    private void validateAccountOwnership(Account account, Long userId) {
+        if (!account.getUser().getId().equals(userId)) {
+            throw new UnauthorizedException("You don't have permission to access this account");
+        }
+    }
+
+    private Transaction findTransactionById(Long id) {
         return transactionRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Transaction", "id", id.toString()));
     }
 
-    public Category findCategoryById(Long id) {
+    private Category findCategoryById(Long id) {
         return categoryRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Category", "id", id.toString()));
     }
 
-    public Account findAccountById(Long id) {
+    private Account findAccountById(Long id) {
         return accountRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Account", "id", id.toString()));
     }

@@ -2,7 +2,6 @@ package com.jirapat.personalfinance.api.repository.specification;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalTime;
 
 import org.springframework.data.jpa.domain.Specification;
 
@@ -33,25 +32,28 @@ public class TransactionSpecification {
                 : criteriaBuilder.equal(root.get("type"), type);
     }
 
-    public static Specification<Transaction> createdAfter(LocalDate dateFrom) {
+    public static Specification<Transaction> transactionDateFrom(LocalDate dateFrom) {
         return (root, query, cb) -> dateFrom == null
                 ? null
-                : cb.greaterThanOrEqualTo(root.get("createdAt"), dateFrom.atStartOfDay());
+                : cb.greaterThanOrEqualTo(root.get("transactionDate"), dateFrom);
     }
 
-    public static Specification<Transaction> createdBefore(LocalDate dateTo) {
-        return (root, query, criteriaBuilder) -> dateTo == null
+    public static Specification<Transaction> transactionDateTo(LocalDate dateTo) {
+        return (root, query, cb) -> dateTo == null
                 ? null
-                : criteriaBuilder.lessThanOrEqualTo(root.get("createdAt"), dateTo.atTime(LocalTime.MAX));
+                : cb.lessThanOrEqualTo(root.get("transactionDate"), dateTo);
     }
 
-    public static Specification<Transaction> amountBetween(BigDecimal min, BigDecimal max) {
-        return (root, query, criteriaBuilder) -> min == null || max == null
+    public static Specification<Transaction> amountMin(BigDecimal min) {
+        return (root, query, cb) -> min == null
                 ? null
-                : criteriaBuilder.and(
-                criteriaBuilder.greaterThanOrEqualTo(root.get("amount"), min),
-                criteriaBuilder.lessThanOrEqualTo(root.get("amount"), max)
-        );
+                : cb.greaterThanOrEqualTo(root.get("amount"), min);
+    }
+
+    public static Specification<Transaction> amountMax(BigDecimal max) {
+        return (root, query, cb) -> max == null
+                ? null
+                : cb.lessThanOrEqualTo(root.get("amount"), max);
     }
 
     public static Specification<Transaction> hasCategoryId(Long categoryId) {
@@ -59,5 +61,4 @@ public class TransactionSpecification {
                 ? null
                 : criteriaBuilder.equal(root.get("category").get("id"), categoryId);
     }
-
 }
