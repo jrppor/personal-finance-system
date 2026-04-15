@@ -6,54 +6,36 @@ import org.mapstruct.MappingTarget;
 import org.mapstruct.Named;
 import org.mapstruct.ReportingPolicy;
 
-import com.jirapat.personalfinance.api.dto.request.CreateTransactionRequest;
-import com.jirapat.personalfinance.api.dto.request.UpdateTransactionRequest;
-import com.jirapat.personalfinance.api.dto.response.AccountResponse;
+import com.jirapat.personalfinance.api.dto.request.CreateBudgetRequest;
+import com.jirapat.personalfinance.api.dto.request.UpdateBudgetRequest;
+import com.jirapat.personalfinance.api.dto.response.BudgetResponse;
 import com.jirapat.personalfinance.api.dto.response.CategoryResponse;
-import com.jirapat.personalfinance.api.dto.response.TransactionResponse;
-import com.jirapat.personalfinance.api.entity.Account;
+import com.jirapat.personalfinance.api.entity.Budget;
 import com.jirapat.personalfinance.api.entity.Category;
-import com.jirapat.personalfinance.api.entity.Transaction;
 
 @Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
-public interface TransactionMapper {
+public interface BudgetMapper {
 
-    @Mapping(source = "account", target = "account", qualifiedByName = "toAccountResponse")
     @Mapping(source = "category", target = "category", qualifiedByName = "toCategory")
-    @Mapping(target = "transferToAccount", ignore = true)
-    TransactionResponse toTransactionResponse(Transaction transaction);
+    BudgetResponse toBudgetResponse(Budget budget);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "user", ignore = true)
-    @Mapping(target = "account", ignore = true)
     @Mapping(target = "category", ignore = true)
+    @Mapping(target = "isActive", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     @Mapping(target = "deletedAt", ignore = true)
-    Transaction toEntity(CreateTransactionRequest request);
+    Budget toEntity(CreateBudgetRequest request);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "user", ignore = true)
-    @Mapping(target = "account", ignore = true)
     @Mapping(target = "category", ignore = true)
+    @Mapping(target = "isActive", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     @Mapping(target = "deletedAt", ignore = true)
-    Transaction updateEntity(UpdateTransactionRequest request, @MappingTarget Transaction transaction);
-
-    @Named("toAccountResponse")
-    default AccountResponse toAccountResponse(Account account) {
-        if (account == null) return null;
-        return AccountResponse.builder()
-                .id(account.getId())
-                .name(account.getName())
-                .type(account.getType())
-                .balance(account.getBalance())
-                .isActive(account.getIsActive())
-                .createdAt(account.getCreatedAt())
-                .updatedAt(account.getUpdatedAt())
-                .build();
-    }
+    Budget updateEntity(UpdateBudgetRequest request, @MappingTarget Budget budget);
 
     @Named("toCategory")
     default CategoryResponse toCategory(Category category) {
