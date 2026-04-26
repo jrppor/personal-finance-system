@@ -17,6 +17,13 @@ public class CategorySpecification {
         return (root, query, cb) -> cb.isNull(root.get("parent"));
     }
 
+    public static Specification<Category> belongsToUserOrDefault(Long userId) {
+        return (root, query, cb) -> cb.or(
+                cb.isNull(root.get("user")),
+                cb.equal(root.get("user").get("id"), userId)
+        );
+    }
+
     public static Specification<Category> createdAfter(LocalDate dateFrom) {
         return  (root, query, cb) -> dateFrom == null
                 ? null
