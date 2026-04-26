@@ -3,7 +3,6 @@ package com.jirapat.personalfinance.api.entity;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-import lombok.*;
 import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.SQLRestriction;
 
@@ -15,44 +14,45 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import lombok.experimental.SuperBuilder;
 
 @Entity
-@Table(name = "budgets")
-@SQLDelete(sql = "UPDATE budgets SET deleted_at = NOW() WHERE id = ?")
+@Table(name = "savings_goals")
+@SQLDelete(sql = "UPDATE savings_goals SET status = 'CANCELLED', deleted_at = NOW(), updated_at = NOW() WHERE id = ?")
 @SQLRestriction("deleted_at IS NULL")
 @Getter
 @Setter
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-public class Budget extends BaseEntity {
+public class SavingsGoal extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
     private User user;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "category_id")
-    private Category category;
-
     @Column(nullable = false, length = 100)
     private String name;
 
-    @Column(nullable = false, precision = 15, scale = 2)
-    private BigDecimal amount;
+    @Column(name = "target_amount",nullable = false, precision = 15, scale = 2)
+    private BigDecimal targetAmount;
+
+    @Column(name = "current_amount", precision = 15, scale = 2, nullable = false)
+    private BigDecimal currentAmount;
+
+    private LocalDate deadline;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 10)
-    private BudgetPeriod period;
+    @Column(nullable = false, length = 15)
+    private SavingsGoalStatus status;
 
-    @Column(nullable = false, name = "start_date")
-    private LocalDate startDate;
+    @Column(length = 50)
+    private String icon;
 
-    @Column(name = "end_date")
-    private LocalDate endDate;
-
-    @Builder.Default
-    @Column(name = "is_active", nullable = false)
-    private Boolean isActive = true;
+    @Column(length = 7)
+    private String color;
 }

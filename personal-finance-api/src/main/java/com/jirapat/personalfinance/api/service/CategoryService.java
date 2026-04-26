@@ -15,6 +15,7 @@ import com.jirapat.personalfinance.api.entity.Category;
 import com.jirapat.personalfinance.api.entity.User;
 import com.jirapat.personalfinance.api.exception.BadRequestException;
 import com.jirapat.personalfinance.api.exception.ResourceNotFoundException;
+import com.jirapat.personalfinance.api.exception.UnauthorizedException;
 import com.jirapat.personalfinance.api.mapper.CategoryMapper;
 import com.jirapat.personalfinance.api.repository.CategoryRepository;
 import com.jirapat.personalfinance.api.repository.specification.CategorySpecification;
@@ -35,7 +36,10 @@ public class CategoryService {
     private final CategoryMapper categoryMapper;
 
     public Page<CategoryResponse> getAllCategories(LocalDate dateFrom, LocalDate dateTo, Pageable pageable) {
+        Long currentUserId = securityService.getCurrentUserId();
+
         Specification<Category> spec = CategorySpecification.rootOnly()
+                .and(CategorySpecification.belongsToUserOrDefault(currentUserId))
                 .and(CategorySpecification.createdAfter(dateFrom))
                 .and(CategorySpecification.createdBefore(dateTo));
 
@@ -47,6 +51,7 @@ public class CategoryService {
     public CategoryResponse getCategoryById(Long id) {
         log.info("Fetching Category by id: {}", id);
         Category category = findCategoryById(id);
+        validateVisibility(category);
         return categoryMapper.toCategoryResponse(category);
     }
 
@@ -72,6 +77,8 @@ public class CategoryService {
         log.info("Updating category {} by user: {}", id, currentUser.getEmail());
 
         Category category = findCategoryById(id);
+        validateOwnership(category);
+
         categoryMapper.updateEntity(request, category);
 
         Category saved = categoryRepository.save(category);
@@ -81,6 +88,7 @@ public class CategoryService {
     public void deleteCategory(Long id) {
         log.info("Deleting category: {}", id);
         Category category = findCategoryById(id);
+        validateOwnership(category);
         validateDeletable(category);
 
         categoryRepository.delete(category);
@@ -90,6 +98,26 @@ public class CategoryService {
     public Category findCategoryById(Long id) {
         return categoryRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Category", "id", id.toString()));
+    }
+
+    private void validateVisibility(Category category) {
+        if (Boolean.TRUE.equals(category.getIsDefault())) {
+            return;
+        }
+        Long currentUserId = securityService.getCurrentUserId();
+        if (category.getUser() == null || !category.getUser().getId().equals(currentUserId)) {
+            throw new UnauthorizedException("You do not have permission to access this category");
+        }
+    }
+
+    private void validateOwnership(Category category) {
+        if (Boolean.TRUE.equals(category.getIsDefault())) {
+            throw new BadRequestException("Cannot modify a default category");
+        }
+        Long currentUserId = securityService.getCurrentUserId();
+        if (category.getUser() == null || !category.getUser().getId().equals(currentUserId)) {
+            throw new UnauthorizedException("You do not have permission to modify this category");
+        }
     }
 
     private void validateCategoryDepth(Category parentCategory) {

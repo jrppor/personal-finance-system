@@ -2,8 +2,6 @@ package com.jirapat.personalfinance.api.service;
 
 import java.time.LocalDate;
 
-import com.jirapat.personalfinance.api.dto.request.UpdateAccountRequest;
-import com.jirapat.personalfinance.api.exception.ResourceNotFoundException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -11,9 +9,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.jirapat.personalfinance.api.dto.request.CreateAccountRequest;
+import com.jirapat.personalfinance.api.dto.request.UpdateAccountRequest;
 import com.jirapat.personalfinance.api.dto.response.AccountResponse;
 import com.jirapat.personalfinance.api.entity.Account;
 import com.jirapat.personalfinance.api.entity.User;
+import com.jirapat.personalfinance.api.exception.ResourceNotFoundException;
+import com.jirapat.personalfinance.api.exception.UnauthorizedException;
 import com.jirapat.personalfinance.api.mapper.AccountMapper;
 import com.jirapat.personalfinance.api.repository.AccountRepository;
 import com.jirapat.personalfinance.api.repository.specification.AccountSpecification;
@@ -36,8 +37,10 @@ public class AccountService {
             LocalDate dateTo,
             Pageable pageable
     ){
+        Long currentUserId = securityService.getCurrentUserId();
 
-        Specification<Account> spec = AccountSpecification.createdAfter(dateFrom)
+        Specification<Account> spec = AccountSpecification.hasUserId(currentUserId)
+                .and(AccountSpecification.createdAfter(dateFrom))
                 .and(AccountSpecification.createdBefore(dateTo));
 
         return accountRepository.findAll(spec, pageable)
@@ -49,6 +52,7 @@ public class AccountService {
     public AccountResponse getAccountById(Long id) {
         log.info("Fetching Account by id: {}", id);
         Account account = findAccountById(id);
+        validateOwnership(account);
         AccountResponse response = accountMapper.toAccountResponse(account);
 
         return response;
@@ -70,6 +74,7 @@ public class AccountService {
         log.info("Updating account {} by user: {}", id, currentUser.getEmail());
 
         Account account = findAccountById(id);
+        validateOwnership(account);
 
         accountMapper.updateEntity(request, account);
 
@@ -80,6 +85,7 @@ public class AccountService {
     public void deleteAccount(Long id) {
         log.info("Deleting account: {}", id);
         Account account = findAccountById(id);
+        validateOwnership(account);
 
         accountRepository.delete(account);
         log.info("Account delete successfully: {}", id);
@@ -88,5 +94,12 @@ public class AccountService {
     public Account findAccountById(Long id) {
         return accountRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Account", "id", id.toString()));
+    }
+
+    private void validateOwnership(Account account) {
+        Long currentUserId = securityService.getCurrentUserId();
+        if (!account.getUser().getId().equals(currentUserId)) {
+            throw new UnauthorizedException("You do not have permission to access this account");
+        }
     }
 }
