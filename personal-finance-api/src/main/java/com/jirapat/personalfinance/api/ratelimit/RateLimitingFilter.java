@@ -1,7 +1,5 @@
 package com.jirapat.personalfinance.api.ratelimit;
 
-import com.jirapat.personalfinance.api.config.RateLimitProperties;
-
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.concurrent.ConcurrentHashMap;
@@ -9,10 +7,12 @@ import java.util.concurrent.TimeUnit;
 
 import org.jspecify.annotations.NonNull;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+
+import com.jirapat.personalfinance.api.config.RateLimitProperties;
+
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -23,7 +23,6 @@ import lombok.extern.slf4j.Slf4j;
 
 
 @Component
-@EnableScheduling
 @EnableConfigurationProperties(RateLimitProperties.class)
 @RequiredArgsConstructor
 @Slf4j
